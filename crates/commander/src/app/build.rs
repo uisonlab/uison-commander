@@ -224,7 +224,10 @@ pub fn build(sources: Vec<Arc<dyn Source>>, start: Start) -> Ui {
     on(&mut ui, &app, "menuKeys", App::help);
     on(&mut ui, &app, "menuAbout", App::about);
     // "Choose…" by a file field (an SSH key): the system's Open dialog, in the field's folder or ~/.ssh.
-    on(&mut ui, &app, "dlgBrowse", |_, cx| {
+    // The dialog of Linux is another process (zenity, kdialog): it waits in a thread, the window keeps drawing.
+    #[cfg(target_os = "linux")]
+    let handle = ui.handle();
+    on(&mut ui, &app, "dlgBrowse", move |_, cx| {
         let Some(i) = cx.key.strip_prefix("dlg-br").and_then(|n| n.parse::<usize>().ok()) else { return };
         let field = format!("dlg.params.{i}.value");
         let home = std::env::home_dir().unwrap_or_default();
@@ -234,21 +237,33 @@ pub fn build(sources: Vec<Arc<dyn Source>>, start: Start) -> Ui {
             None => std::path::PathBuf::from(typed),
         };
         let start = typed.parent().filter(|p| p.is_absolute()).map_or_else(|| home.join(".ssh"), |p| p.to_path_buf());
+        // Under the home folder as ~/…: shorter, and the same on another computer (`/` on Windows too).
+        let shown = move |path: String| {
+            std::path::Path::new(&path).strip_prefix(&home).map_or(path.clone(), |r| format!("~/{}", r.to_string_lossy().replace('\\', "/")))
+        };
         #[cfg(target_os = "macos")]
         let chosen = crate::macos::choose_file(&start, t!("Choose the private key (not the .pub file)"));
         #[cfg(windows)]
         let chosen = crate::windows::choose_file(&start, t!("Choose the private key (not the .pub file)"));
-        #[cfg(not(any(target_os = "macos", windows)))]
-        let chosen: Option<String> = {
-            let _ = start;
-            None
-        };
+        #[cfg(any(target_os = "macos", windows))]
         if let Some(path) = chosen {
-            // Under the home folder as ~/…: shorter, and the same on another computer (`/` on Windows too).
-            let shown =
-                std::path::Path::new(&path).strip_prefix(&home).map_or(path.clone(), |r| format!("~/{}", r.to_string_lossy().replace('\\', "/")));
-            cx.data.set(&field, shown);
+            cx.data.set(&field, shown(path));
         }
+        #[cfg(target_os = "linux")]
+        {
+            let (handle, title) = (handle.clone(), t!("Choose the private key (not the .pub file)").to_string());
+            std::thread::spawn(move || {
+                let Some(path) = crate::linux::choose_file(&start, &title) else { return };
+                // The form may be gone by then: only a field that is still there gets the path.
+                handle.post(move |cx| {
+                    if cx.data.get(&field).is_some() {
+                        cx.data.set(&field, shown(path));
+                    }
+                });
+            });
+        }
+        #[cfg(not(any(target_os = "macos", target_os = "linux", windows)))]
+        let _ = (start, shown);
     });
     // Properties: the number follows the ticks.
     on(&mut ui, &app, "permTick", |_, cx| {

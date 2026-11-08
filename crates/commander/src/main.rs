@@ -24,8 +24,10 @@ mod state;
 mod viewer;
 #[cfg(windows)]
 mod windows;
+#[cfg(target_os = "linux")]
+mod linux;
 
-#[cfg(any(target_os = "macos", windows))]
+#[cfg(any(target_os = "macos", target_os = "linux", windows))]
 mod check;
 
 use std::sync::Arc;
@@ -69,11 +71,11 @@ fn main() {
     let with_value = ["--slow", "--png", "--bench"];
     let is_value = |i: usize| i > 0 && with_value.contains(&args[i - 1].as_str());
     let folder = (0..args.len()).find(|&i| !args[i].starts_with("--") && !is_value(i)).and_then(|i| vfs_local::resolve(&args[i]));
-    #[cfg(any(target_os = "macos", windows))]
+    #[cfg(any(target_os = "macos", target_os = "linux", windows))]
     if let Some(dir) = value("--png") {
         return check::png(&dir);
     }
-    #[cfg(any(target_os = "macos", windows))]
+    #[cfg(any(target_os = "macos", target_os = "linux", windows))]
     if let Some(dir) = value("--bench").and_then(|d| vfs_local::resolve(&d)) {
         return check::bench(dir);
     }

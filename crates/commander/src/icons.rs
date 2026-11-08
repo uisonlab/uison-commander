@@ -1,13 +1,13 @@
 //! Icons of the rows: the system's own on a Mac (`NSWorkspace iconForFileType:`) — a folder, and a file
 //! by its extension, the same as in Finder. Each kind is asked once and kept as a PNG image `mem:icon-…`.
-//! On Windows the shell's own (`SHGetFileInfoW`), the same as in Explorer. Elsewhere there are no icons yet:
-//! the source is empty and nothing is drawn.
+//! On Windows the shell's own (`SHGetFileInfoW`), the same as in Explorer. On Linux the icon theme the desktop
+//! uses (`linux.rs`). Elsewhere there are none: the source is empty and nothing is drawn.
 
 use std::cell::RefCell;
 use std::collections::HashMap;
 
 /// Side of the icon in pixels: 16 pt on a 2× screen.
-#[cfg(any(target_os = "macos", windows))]
+#[cfg(any(target_os = "macos", target_os = "linux", windows))]
 const PX: f64 = 32.0;
 
 /// Extensions longer than this, or not made of letters and digits, get the generic file icon:
@@ -64,7 +64,12 @@ fn png(kind: &str) -> Option<Vec<u8>> {
     crate::windows::icon_png(kind, PX as u32)
 }
 
-#[cfg(not(any(target_os = "macos", windows)))]
+#[cfg(target_os = "linux")]
+fn png(kind: &str) -> Option<Vec<u8>> {
+    crate::linux::icon_png(kind, PX as u32)
+}
+
+#[cfg(not(any(target_os = "macos", target_os = "linux", windows)))]
 fn png(_kind: &str) -> Option<Vec<u8>> {
     None
 }
@@ -74,7 +79,7 @@ pub const LIGHT_INK: [f64; 3] = [0.24, 0.24, 0.27];
 pub const DARK_INK: [f64; 3] = [0.86, 0.86, 0.89];
 
 /// An SF Symbol for a button, in the color for a light or a dark background, as an image source
-/// (`mem:sym-…`; on Windows the like glyph of the system's icon font); empty where there are none.
+/// (`mem:sym-…`; on Windows the like glyph of the system's icon font, on Linux the theme's symbolic icon); empty where there are none.
 pub fn symbol(name: &str, dark: bool) -> String {
     symbol_ink(name, if dark { "dark" } else { "light" }, if dark { DARK_INK } else { LIGHT_INK })
 }
@@ -95,7 +100,10 @@ fn symbol_ink(name: &str, ink: &str, rgb: [f64; 3]) -> String {
         // The same glyph from the system's icon font, 16 pt on a 2× screen.
         #[cfg(windows)]
         let bytes = crate::windows::symbol_png(name, rgb, PX as i32);
-        #[cfg(not(any(target_os = "macos", windows)))]
+        // The desktop theme's symbolic icon in this color.
+        #[cfg(target_os = "linux")]
+        let bytes = crate::linux::symbol_png(name, rgb, PX as i32);
+        #[cfg(not(any(target_os = "macos", target_os = "linux", windows)))]
         let bytes: Option<Vec<u8>> = {
             let _ = rgb;
             None
@@ -112,7 +120,7 @@ fn symbol_ink(name: &str, ink: &str, rgb: [f64; 3]) -> String {
     })
 }
 
-#[cfg(all(test, any(target_os = "macos", windows)))]
+#[cfg(all(test, any(target_os = "macos", target_os = "linux", windows)))]
 mod tests {
     use super::src;
 

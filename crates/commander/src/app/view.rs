@@ -173,6 +173,8 @@ pub(super) fn open_in_editor(path: &std::path::Path) {
     // Windows has no "default text editor": Notepad is the one every system has.
     #[cfg(windows)]
     let _ = std::process::Command::new("notepad.exe").arg(path).spawn();
-    #[cfg(not(any(target_os = "macos", windows)))]
+    #[cfg(target_os = "linux")]
+    crate::linux::open_in_editor(path);
+    #[cfg(not(any(target_os = "macos", target_os = "linux", windows)))]
     let _ = path;
 }

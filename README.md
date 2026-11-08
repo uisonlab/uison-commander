@@ -10,7 +10,10 @@ network source and about 1 MB without them.
 
 > **Status:** early (0.1). Developed on macOS (Apple Silicon), also runs on Windows 10/11
 > (x86_64); there the tests pass, but network sources have not yet been tried against live servers.
-> uison runs on Linux too, but the commander has not been ported or tested there yet.
+> On Linux (Ubuntu 24.04, GNOME on Wayland) it builds, the tests pass and the window works; F4 opens the
+> default text editor, "Choose…" uses zenity or kdialog, disks under `/media`, `/run/media` and `/mnt` are
+> roots. File and folder icons come from the desktop's icon theme (GNOME, KDE or the Yaru/Adwaita fallbacks).
+> Passwords are not remembered there yet (no Secret Service support).
 
 ## Features
 

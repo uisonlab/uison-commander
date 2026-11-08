@@ -65,6 +65,41 @@ pub fn vpath(p: &Path) -> VPath {
     VPath::new(&p.to_string_lossy())
 }
 
+/// Linux: disks mounted where the desktop (udisks) or the user put them — `/media/<user>/…`,
+/// `/run/media/<user>/…` (Fedora, Arch), `/mnt/…` — from the mount table, in its order.
+#[cfg(target_os = "linux")]
+fn linux_mounts() -> Vec<String> {
+    let Ok(table) = fs::read_to_string("/proc/self/mounts") else { return Vec::new() };
+    let mut out: Vec<String> = Vec::new();
+    for line in table.lines() {
+        let Some(dir) = line.split(' ').nth(1) else { continue };
+        let dir = unescape_mount(dir);
+        let under = ["/media/", "/run/media/", "/mnt/"].iter().any(|p| dir.starts_with(p));
+        if under && !out.contains(&dir) {
+            out.push(dir);
+        }
+    }
+    out
+}
+
+/// The mount table writes a space, tab, newline and backslash in octal: `\040` → ` `.
+#[cfg(target_os = "linux")]
+fn unescape_mount(s: &str) -> String {
+    let b = s.as_bytes();
+    let mut out = Vec::with_capacity(b.len());
+    let mut i = 0;
+    while i < b.len() {
+        if b[i] == b'\\' && i + 4 <= b.len() && b[i + 1..i + 4].iter().all(|c| (b'0'..=b'7').contains(c)) {
+            out.push((b[i + 1] - b'0') * 64 + (b[i + 2] - b'0') * 8 + (b[i + 3] - b'0'));
+            i += 4;
+        } else {
+            out.push(b[i]);
+            i += 1;
+        }
+    }
+    String::from_utf8_lossy(&out).into_owned()
+}
+
 /// Windows: the drives there are (`/C:`, `/D:`…) — what the root `/` holds.
 #[cfg(windows)]
 fn drives() -> Vec<String> {
@@ -85,6 +120,12 @@ fn volume_space(p: &Path) -> Option<(u64, u64)> {
     let w: Vec<u16> = p.as_os_str().encode_wide().chain([0]).collect();
     let (mut avail, mut total, mut free) = (0u64, 0u64, 0u64);
     (unsafe { GetDiskFreeSpaceExW(w.as_ptr(), &mut avail, &mut total, &mut free) } != 0).then_some((avail, total))
+}
+
+/// A small system file that is not a source's content (a desktop's theme, the MIME database): its text, or `None`
+/// if it is not there or not text.
+pub fn read_system_text(p: &Path) -> Option<String> {
+    fs::read_to_string(p).ok()
 }
 
 /// A path typed by the user (the command line): absolute, links resolved; `None` if it doesn't exist.
@@ -351,6 +392,8 @@ impl Source for LocalFs {
             out.clear();
             out.extend(drives().into_iter().map(|d| Root { path: VPath::root().child(&d), title: d }));
         }
+        #[cfg(target_os = "linux")]
+        out.extend(linux_mounts().into_iter().map(|m| Root { title: m.rsplit('/').next().unwrap_or(&m).to_string(), path: VPath::new(&m) }));
         if let Some(h) = std::env::home_dir() {
             out.push(Root { path: vpath(&h), title: "~".into() });
         }
@@ -565,6 +608,15 @@ impl Source for LocalFs {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn mount_table_escapes() {
+        assert_eq!(unescape_mount(r"/media/u/My\040Disk"), "/media/u/My Disk");
+        assert_eq!(unescape_mount(r"/mnt/a\134b"), r"/mnt/a\b");
+        assert_eq!(unescape_mount(r"/mnt/x\04"), r"/mnt/x\04");
+        assert!(linux_mounts().iter().all(|m| m.starts_with('/')));
+    }
 
     /// A fresh empty folder under the system temp folder.
     pub fn scratch(tag: &str) -> PathBuf {
