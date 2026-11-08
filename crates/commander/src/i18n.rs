@@ -520,6 +520,10 @@ const RU: &[(&str, &str)] = &[
         "Enter или двойной щелчок — подключиться. Пароли хранятся в Связке ключей.",
     ),
     (
+        "Enter or a double click connects. Passwords are kept in the Credential Manager.",
+        "Enter или двойной щелчок — подключиться. Пароли хранятся в Диспетчере учётных данных.",
+    ),
+    (
         "Nothing here yet: add a connection — it is kept here once it works.",
         "Пока пусто: добавьте подключение — оно сохранится здесь, когда заработает.",
     ),
@@ -538,6 +542,8 @@ const RU: &[(&str, &str)] = &[
     ("Cannot connect", "Не удалось подключиться"),
     ("Remember the password in the Keychain", "Запомнить пароль в Связке ключей"),
     ("empty — the one in the Keychain", "пусто — тот, что в Связке ключей"),
+    ("Remember the password in the Credential Manager", "Запомнить пароль в Диспетчере учётных данных"),
+    ("empty — the one in the Credential Manager", "пусто — тот, что в Диспетчере учётных данных"),
     ("A server never seen before", "Незнакомый сервер"),
     (
         "This is the first connection to {}. Its key fingerprint is\n\n{}\n\nIf you expected this server (its administrator can confirm the fingerprint), trust it: it will be checked on every connection from now on.",

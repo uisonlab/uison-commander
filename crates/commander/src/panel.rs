@@ -311,7 +311,7 @@ impl Panel {
         d.set(&format!("{s}.iconL"), crate::icons::symbol(sym, false));
         d.set(&format!("{s}.iconD"), crate::icons::symbol(sym, true));
         // A long path loses its start, not its end: where you are is the last part.
-        let full = format!("{}: {}", self.src.info().title, self.dir);
+        let full = format!("{}: {}", self.src.info().title, format::path(&*self.src, &self.dir));
         let room = ((d.num("env.width") as f32 / 2.0 - 24.0) / 7.2).max(16.0) as usize;
         let n = full.chars().count();
         let title = if n > room { format!("…{}", full.chars().skip(n - room + 1).collect::<String>()) } else { full };
@@ -333,7 +333,14 @@ impl Panel {
                 ("p", uison::ui::Json::from(path.unwrap_or_default())),
             ])
         };
-        let mut crumbs = vec![if first > 0 { crumb("…/", None) } else { crumb("/", Some("/".into())) }];
+        // A local folder on Windows: `C:` `\` `Users` — the drive first, no `/` before it (that is the drives).
+        let win = cfg!(windows) && !self.dir.is_root() && self.src.local_path(&self.dir).is_some();
+        let sep = if win { "\\" } else { "/" };
+        let mut crumbs = match (first > 0, win) {
+            (true, _) => vec![crumb(&format!("…{sep}"), None)],
+            (false, false) => vec![crumb("/", Some("/".into()))],
+            (false, true) => vec![],
+        };
         let mut path = String::new();
         for (i, name) in names.iter().enumerate() {
             path.push('/');
@@ -342,9 +349,13 @@ impl Panel {
                 continue;
             }
             if i > first {
-                crumbs.push(crumb("/", None));
+                crumbs.push(crumb(sep, None));
             }
             crumbs.push(crumb(name, Some(path.clone())));
+        }
+        // A drive by itself: `C:\`, as Windows writes its root.
+        if win && names.len() == 1 {
+            crumbs.push(crumb(sep, None));
         }
         d.set(&format!("{s}.srcLabel"), label);
         d.set(&format!("{s}.crumbs"), uison::ui::Json::Array(crumbs));

@@ -1,12 +1,13 @@
 //! Icons of the rows: the system's own on a Mac (`NSWorkspace iconForFileType:`) — a folder, and a file
 //! by its extension, the same as in Finder. Each kind is asked once and kept as a PNG image `mem:icon-…`.
-//! Elsewhere there are no icons yet: the source is empty and nothing is drawn.
+//! On Windows the shell's own (`SHGetFileInfoW`), the same as in Explorer. Elsewhere there are no icons yet:
+//! the source is empty and nothing is drawn.
 
 use std::cell::RefCell;
 use std::collections::HashMap;
 
 /// Side of the icon in pixels: 16 pt on a 2× screen.
-#[cfg(target_os = "macos")]
+#[cfg(any(target_os = "macos", windows))]
 const PX: f64 = 32.0;
 
 /// Extensions longer than this, or not made of letters and digits, get the generic file icon:
@@ -58,7 +59,12 @@ fn png(kind: &str) -> Option<Vec<u8>> {
     unsafe { crate::macos::icon_png(ty, PX) }
 }
 
-#[cfg(not(target_os = "macos"))]
+#[cfg(windows)]
+fn png(kind: &str) -> Option<Vec<u8>> {
+    crate::windows::icon_png(kind, PX as u32)
+}
+
+#[cfg(not(any(target_os = "macos", windows)))]
 fn png(_kind: &str) -> Option<Vec<u8>> {
     None
 }
@@ -68,7 +74,7 @@ pub const LIGHT_INK: [f64; 3] = [0.24, 0.24, 0.27];
 pub const DARK_INK: [f64; 3] = [0.86, 0.86, 0.89];
 
 /// An SF Symbol for a button, in the color for a light or a dark background, as an image source
-/// (`mem:sym-…`); empty where there are no symbols (not a Mac).
+/// (`mem:sym-…`; on Windows the like glyph of the system's icon font); empty where there are none.
 pub fn symbol(name: &str, dark: bool) -> String {
     symbol_ink(name, if dark { "dark" } else { "light" }, if dark { DARK_INK } else { LIGHT_INK })
 }
@@ -86,7 +92,10 @@ fn symbol_ink(name: &str, ink: &str, rgb: [f64; 3]) -> String {
         }
         #[cfg(target_os = "macos")]
         let bytes = unsafe { crate::macos::symbol_png(name, 13.0, rgb, 2.0) };
-        #[cfg(not(target_os = "macos"))]
+        // The same glyph from the system's icon font, 16 pt on a 2× screen.
+        #[cfg(windows)]
+        let bytes = crate::windows::symbol_png(name, rgb, PX as i32);
+        #[cfg(not(any(target_os = "macos", windows)))]
         let bytes: Option<Vec<u8>> = {
             let _ = rgb;
             None
@@ -103,7 +112,7 @@ fn symbol_ink(name: &str, ink: &str, rgb: [f64; 3]) -> String {
     })
 }
 
-#[cfg(all(test, target_os = "macos"))]
+#[cfg(all(test, any(target_os = "macos", windows)))]
 mod tests {
     use super::src;
 
@@ -118,7 +127,7 @@ mod tests {
 
     #[test]
     fn symbols_in_both_inks() {
-        for name in ["arrow.clockwise", "externaldrive.connected.to.line.below", "eye", "trash"] {
+        for name in ["arrow.clockwise", "internaldrive", "eye", "trash"] {
             for dark in [false, true] {
                 let s = super::symbol(name, dark);
                 assert!(uison::image::natural_size(&s).is_some_and(|z| z.w >= 16.0), "{name} {dark}: {s}");

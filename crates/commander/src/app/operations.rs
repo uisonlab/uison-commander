@@ -27,10 +27,11 @@ impl App {
             "*.*".to_string()
         } else if here {
             names[0].clone()
-        } else if dst.dir.is_root() {
-            "/".to_string()
         } else {
-            format!("{}/", dst.dir)
+            // The folder with its ending separator ("into it"): `/docs/`, on Windows `C:\Users\x\`.
+            let shown = format::path(&*dst.src, &dst.dir);
+            let sep = if shown.contains('\\') { '\\' } else { '/' };
+            if shown.ends_with(sep) { shown } else { format!("{shown}{sep}") }
         };
         let text = if here {
             t!("{} {} to:\nA new name, or a mask such as *.bak", verb, what)
@@ -45,6 +46,7 @@ impl App {
         let (src_p, dst_side) = (&self.panels[side], if here { side } else { 1 - side });
         let dst_p = &self.panels[dst_side];
         // A relative path counts from the target panel's folder (Shift+F5/F6: this panel's).
+        let target = format::typed_path(&*dst_p.src, &target);
         let target = if target.starts_with('/') { target } else { format!("{}/{}", dst_p.dir, target) };
         let focus_name = VPath::new(&target).name().to_string();
         let t = Transfer {
@@ -58,7 +60,13 @@ impl App {
         let what = if names.len() == 1 { names[0].clone() } else { format::count(names.len() as u64, "object") };
         let title = if mode == Mode::Copy { t!("Copying {}", what) } else { t!("Moving {}", what) };
         let focus = if here && names.len() == 1 { Some((side, focus_name)) } else { None };
-        let route = format!("{}: {}  →  {}: {}", t.src.info().title, t.src_dir, t.dst.info().title, t.target);
+        let route = format!(
+            "{}: {}  →  {}: {}",
+            t.src.info().title,
+            format::path(&*t.src, &t.src_dir),
+            t.dst.info().title,
+            format::path(&*t.dst, &VPath::new(&t.target))
+        );
         self.start_job(title, Some(side), focus, cx, move |fb, cancel| t.run(fb, cancel));
         if let Some(j) = &mut self.job {
             j.route = route;

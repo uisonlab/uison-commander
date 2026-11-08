@@ -22,7 +22,7 @@ impl App {
                 mb.send(Msg::Image { seq, res });
             });
         }
-        cx.data.set("view.title", format!("{}: {}", v.src.info().title, v.path));
+        cx.data.set("view.title", format!("{}: {}", v.src.info().title, format::path(&*v.src, &v.path)));
         cx.data.set("view.isImg", image);
         cx.data.set("view.img", "");
         cx.data.set(
@@ -170,6 +170,9 @@ impl App {
 pub(super) fn open_in_editor(path: &std::path::Path) {
     #[cfg(target_os = "macos")]
     let _ = std::process::Command::new("open").arg("-t").arg(path).spawn();
-    #[cfg(not(target_os = "macos"))]
+    // Windows has no "default text editor": Notepad is the one every system has.
+    #[cfg(windows)]
+    let _ = std::process::Command::new("notepad.exe").arg(path).spawn();
+    #[cfg(not(any(target_os = "macos", windows)))]
     let _ = path;
 }

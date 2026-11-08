@@ -264,7 +264,7 @@ impl Dialog {
                         m.push(("value".into(), v));
                     }
                     m.push(("hint".into(), Json::from(hint)));
-                    m.push(("browse".into(), Json::from(cfg!(target_os = "macos") && self.files.iter().any(|f| f == p.id()))));
+                    m.push(("browse".into(), Json::from(cfg!(any(target_os = "macos", windows)) && self.files.iter().any(|f| f == p.id()))));
                 }
                 j
             })

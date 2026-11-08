@@ -140,8 +140,15 @@ fn read_at_offset(src: &dyn Source, base: &VPath) {
 }
 
 fn odd_names(src: &dyn Source, base: &VPath) {
-    let names_in = ["with space.txt", "проценты %20 и #хеш.md", "emoji 😀", "...", "-dash", ".hidden"];
-    for n in names_in {
+    let mut names_in = vec!["with space.txt", "проценты %20 и #хеш.md", "emoji 😀", "...", "-dash", ".hidden"];
+    // A Windows disk drops trailing dots ("..." would be the folder itself): the name must be refused.
+    if cfg!(windows) && src.local_path(base).is_some() {
+        names_in.retain(|&n| n != "...");
+        assert!(write(src, &base.child("..."), b"x", false).is_err(), "'...' on a Windows disk");
+        assert!(write(src, &base.child("a."), b"x", false).is_err(), "'a.' on a Windows disk");
+        assert!(src.list(base, &Cancel::new()).unwrap().is_empty());
+    }
+    for n in names_in.iter().copied() {
         write(src, &base.child(n), n.as_bytes(), false).unwrap_or_else(|e| panic!("create '{n}': {e}"));
     }
     let mut want: Vec<String> = names_in.iter().map(|s| s.to_string()).collect();

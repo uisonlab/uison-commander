@@ -161,7 +161,7 @@ fn row_key(key: &str) -> Option<(usize, usize)> {
 /// Parameters with secrets get "Remember … in the Keychain" (ticked), where there is a Keychain.
 fn with_remember(mut ps: Vec<vfs::Param>) -> Vec<vfs::Param> {
     if crate::secrets::available() && ps.iter().any(|p| matches!(p, vfs::Param::Secret { .. })) {
-        ps.push(vfs::Param::Flag { id: "remember".into(), title: "Remember the password in the Keychain".into(), default: true });
+        ps.push(vfs::Param::Flag { id: "remember".into(), title: crate::secrets::REMEMBER.into(), default: true });
     }
     ps
 }
@@ -185,8 +185,11 @@ fn what_of(targets: &[Entry]) -> String {
     }
 }
 
-/// `file:///Users/x/My%20file.txt`.
+/// `file:///Users/x/My%20file.txt`. On Windows the path itself: `ShellExecuteW` opens it with its app.
 fn file_url(p: &str) -> String {
+    if cfg!(windows) {
+        return p.to_string();
+    }
     let mut s = String::from("file://");
     for b in p.bytes() {
         if b.is_ascii_alphanumeric() || b"/-_.~".contains(&b) {

@@ -74,6 +74,37 @@ pub fn mode(m: u32) -> String {
     s
 }
 
+/// A path of `src` as the person reads it: on Windows a local one as Windows writes it (`/C:/Users/x` →
+/// `C:\Users\x`); the root (the drives) and other sources as they are.
+pub fn path(src: &dyn vfs::Source, p: &vfs::VPath) -> String {
+    #[cfg(windows)]
+    if !p.is_root()
+        && let Some(os) = src.local_path(p)
+    {
+        return os.to_string_lossy().into_owned();
+    }
+    let _ = src;
+    p.to_string()
+}
+
+/// A path typed for `src` → the source's own, with `/`. On Windows a local one may be typed as Windows writes
+/// it: `C:\Users\x\`, `d:`, `\\srv\share\a`, `sub\name`. The ending `\` or `/` ("into the folder") stays.
+pub fn typed_path(src: &dyn vfs::Source, s: &str) -> String {
+    #[cfg(windows)]
+    if src.local_path(&vfs::VPath::root()).is_some() {
+        let s = s.trim();
+        let b = s.as_bytes();
+        if (b.len() >= 2 && b[0].is_ascii_alphabetic() && b[1] == b':') || s.starts_with("\\\\") {
+            let p = vfs_local::vpath(std::path::Path::new(s)).to_string();
+            return if s.ends_with(['\\', '/']) && p != "/" { format!("{p}/") } else { p };
+        }
+        // `\` is no part of a name on Windows (`check_name`): a separator.
+        return s.replace('\\', "/");
+    }
+    let _ = src;
+    s.to_string()
+}
+
 pub struct Tm {
     pub year: i32,
     /// 0…11.
@@ -109,9 +140,43 @@ fn local(secs: i64) -> Tm {
     Tm { year: tm.year + 1900, mon: tm.mon, mday: tm.mday, hour: tm.hour, min: tm.min, sec: tm.sec }
 }
 
-/// Elsewhere for now: UTC.
-#[cfg(not(unix))]
+/// Windows: the system's time zone with its DST rules for that date (`SystemTimeToTzSpecificLocalTime`).
+#[cfg(windows)]
 fn local(secs: i64) -> Tm {
+    /// `SYSTEMTIME`.
+    #[repr(C)]
+    #[derive(Default)]
+    struct St {
+        year: u16,
+        month: u16,
+        wday: u16,
+        day: u16,
+        hour: u16,
+        min: u16,
+        sec: u16,
+        ms: u16,
+    }
+    unsafe extern "system" {
+        fn FileTimeToSystemTime(ft: *const u64, st: *mut St) -> i32;
+        fn SystemTimeToTzSpecificLocalTime(tz: *const std::ffi::c_void, utc: *const St, local: *mut St) -> i32;
+    }
+    // FILETIME: 100 ns since 1601.
+    let Some(ft) = secs.checked_add(11_644_473_600).filter(|s| *s >= 0).map(|s| s as u64 * 10_000_000) else { return utc(secs) };
+    let (mut u, mut l) = (St::default(), St::default());
+    if unsafe { FileTimeToSystemTime(&ft, &mut u) == 0 || SystemTimeToTzSpecificLocalTime(std::ptr::null(), &u, &mut l) == 0 } {
+        return utc(secs);
+    }
+    Tm { year: l.year as i32, mon: l.month as i32 - 1, mday: l.day as i32, hour: l.hour as i32, min: l.min as i32, sec: l.sec as i32 }
+}
+
+/// Elsewhere for now: UTC.
+#[cfg(not(any(unix, windows)))]
+fn local(secs: i64) -> Tm {
+    utc(secs)
+}
+
+#[cfg(not(unix))]
+fn utc(secs: i64) -> Tm {
     let days = secs.div_euclid(86_400);
     let rem = secs.rem_euclid(86_400) as i32;
     // Civil from days (H. Hinnant).
@@ -153,5 +218,24 @@ mod tests {
         let s = date(t);
         assert_eq!(s.len(), "14.11.23 22:13".len(), "{s}");
         assert!(s.contains(".11.23 "), "{s}");
+    }
+
+    /// The local disk shows and takes Windows paths; other sources keep theirs.
+    #[cfg(windows)]
+    #[test]
+    fn windows_paths() {
+        use vfs::VPath;
+        let (disk, mem) = (vfs_local::LocalFs::new(), vfs::MemFs::new("m"));
+        assert_eq!(path(&disk, &VPath::new("/C:/Users/x")), r"C:\Users\x");
+        assert_eq!(path(&disk, &VPath::new("/C:")), r"C:\");
+        assert_eq!(path(&disk, &VPath::root()), "/");
+        assert_eq!(path(&mem, &VPath::new("/docs")), "/docs");
+        assert_eq!(typed_path(&disk, r"C:\Users\x\"), "/C:/Users/x/");
+        assert_eq!(typed_path(&disk, r"d:\a b"), "/D:/a b");
+        assert_eq!(typed_path(&disk, "c:"), "/C:");
+        assert_eq!(typed_path(&disk, r"sub\name"), "sub/name");
+        assert_eq!(typed_path(&disk, "/C:/x/"), "/C:/x/");
+        assert_eq!(typed_path(&disk, "*.bak"), "*.bak");
+        assert_eq!(typed_path(&mem, r"a\b"), r"a\b");
     }
 }

@@ -99,6 +99,17 @@ impl Run {
         self
     }
 
+    /// Let time pass until `t` is no longer on the screen (an answer that replaces "Connecting…"), at most `max`.
+    #[cfg(all(test, feature = "sftp"))]
+    pub fn wait_gone(&mut self, t: &str, max: Duration) -> &mut Run {
+        let t0 = Instant::now();
+        while self.text().contains(t) && t0.elapsed() < max {
+            self.wait(Duration::from_millis(50));
+        }
+        self.settle();
+        self
+    }
+
     pub fn keys(&mut self, specs: &str) -> &mut Run {
         for s in specs.split_whitespace() {
             self.h.event(Event::Key(key(s))).unwrap();
@@ -373,6 +384,9 @@ pub fn bench(folder: VPath) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The group of the local disk in the source list (`source_title`).
+    const DISK: &str = if cfg!(target_os = "macos") { "This Mac" } else { "This computer" };
 
     fn demo() -> Run {
         let mem: Arc<dyn Source> = Arc::new(demo_source(0));
@@ -741,16 +755,15 @@ mod tests {
         assert!(r.text().contains("SFTP") && r.text().contains("Edit…"), "the menu: {}", r.text());
         r.click_text("SFTP", MouseButton::Left).typed("u@127.0.0.1:1");
         r.click_key("dlg-s1", MouseButton::Left).typed("pw").keys("enter");
-        r.wait(Duration::from_millis(1000));
-        r.settle();
+        // Windows refuses a closed port on 127.0.0.1 only after its SYN retries, about 2 s.
+        r.wait_gone("Connecting…", Duration::from_secs(5));
         let t = r.text();
         assert!(t.contains("New SFTP connection") && t.contains("u@127.0.0.1:1") && t.contains("127.0.0.1"), "{t}");
         assert!(t.to_lowercase().contains("refused") && !t.contains("Connecting…"), "why, in the form: {t}");
         assert!(!t.contains("Cannot connect"), "no other window: {t}");
         r.click_text("Test", MouseButton::Left);
         assert!(r.text().contains("Checking the connection…") || r.text().contains("refused"), "{}", r.text());
-        r.wait(Duration::from_millis(1000));
-        r.settle();
+        r.wait_gone("Checking", Duration::from_secs(5));
         assert!(r.text().contains("refused") && !r.text().contains("Checking"), "{}", r.text());
         r.keys("escape");
         assert!(!r.text().contains("New SFTP connection"), "{}", r.text());
@@ -814,7 +827,12 @@ mod tests {
         assert!(t.contains("Theme") && t.contains("Language") && t.contains("English") && t.contains("Русский"), "{t}");
         r.click_key("set-dark", MouseButton::Left);
         assert_ne!(ink(&r.h.rt.frame.items, "readme").unwrap(), light, "the dark theme's ink");
-        assert!(pics(&r).contains("sym-arrow.clockwise-dark"), "the symbols in the dark ink: {}", pics(&r));
+        // Symbols are drawn on a Mac and on Windows (`icons::symbol`).
+        assert!(
+            !cfg!(any(target_os = "macos", windows)) || pics(&r).contains("sym-arrow.clockwise-dark"),
+            "the symbols in the dark ink: {}",
+            pics(&r)
+        );
         assert!(r.text().contains("Language"), "a choice keeps the panel open");
         r.click_key("set-ru", MouseButton::Left);
         let t = r.text();
@@ -1003,7 +1021,7 @@ mod tests {
         let _ = r.h.event(Event::Wake);
         let text = r.text();
         assert!(t.elapsed() < Duration::from_millis(1000), "{:?}", t.elapsed());
-        assert!(text.contains("reading…") && text.contains("This Mac"), "{text}");
+        assert!(text.contains("reading…") && text.contains(DISK), "{text}");
         r.wait(Duration::from_millis(2000));
         r.settle();
         assert!(!r.text().contains("reading…"), "{}", r.text());
@@ -1011,7 +1029,7 @@ mod tests {
         r.click_text_after("mem:demo", "/", MouseButton::Left);
         r.wait(Duration::from_millis(1700));
         r.settle();
-        assert!(r.text().contains("mem:demo: /") && !r.text().contains("This Mac"), "{}", r.text());
+        assert!(r.text().contains("mem:demo: /") && !r.text().contains(DISK), "{}", r.text());
     }
 
     /// A server never seen: the panel doesn't open until its fingerprint is trusted in a dialog. Through the
@@ -1110,14 +1128,16 @@ mod tests {
     fn drives_drop_down_under_the_title() {
         let mut r = demo();
         r.click_key("right-hdr", MouseButton::Left);
-        assert!(r.text().contains("This Mac"), "{}", r.text());
+        assert!(r.text().contains(DISK), "{}", r.text());
         r.click_key("right-hdr", MouseButton::Left);
-        assert!(!r.text().contains("This Mac"), "the title again closes it: {}", r.text());
+        assert!(!r.text().contains(DISK), "the title again closes it: {}", r.text());
         r.click_key("left-hdr", MouseButton::Left).click_key("left-drop", MouseButton::Left);
-        assert!(!r.text().contains("This Mac"), "a click beside it closes it: {}", r.text());
-        r.click_key("left-hdr", MouseButton::Left).click_text_after("This Mac", "/", MouseButton::Left);
-        assert!(r.text().lines().any(|l| l == "local: /"), "{}", r.text());
-        assert!(!r.text().contains("This Mac"), "{}", r.text());
+        assert!(!r.text().contains(DISK), "a click beside it closes it: {}", r.text());
+        // The first root of the disk: `/`, on Windows the drives (`vfs_local::roots`), shown as Windows writes them.
+        let (root, shown) = if cfg!(windows) { ("C:", r"C:\") } else { ("/", "/") };
+        r.click_key("left-hdr", MouseButton::Left).click_text_after(DISK, root, MouseButton::Left);
+        assert!(r.text().lines().any(|l| l == format!("local: {shown}")), "{}", r.text());
+        assert!(!r.text().contains(DISK), "{}", r.text());
     }
 
     /// A Host of ~/.ssh/config typed as the server: its HostName, Port, User and IdentityFile are used.

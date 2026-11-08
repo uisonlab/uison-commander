@@ -312,9 +312,9 @@ mod s3 {
     /// A file under the home folder, through the local disk (empty if there is none).
     fn home_file(env: &str, rel: &str) -> String {
         use vfs::Source;
-        let path = match (std::env::var_os(env), std::env::var_os("HOME")) {
+        let path = match (std::env::var_os(env), std::env::home_dir()) {
             (Some(p), _) => vfs_local::vpath(std::path::Path::new(&p)),
-            (None, Some(h)) => vfs_local::vpath(std::path::Path::new(&h)).join(rel),
+            (None, Some(h)) => vfs_local::vpath(&h).join(rel),
             _ => return String::new(),
         };
         let mut s = String::new();
@@ -382,9 +382,9 @@ mod s3 {
 pub fn ssh_config_text() -> String {
     use vfs::Source;
     // `UISON_SSH_CONFIG` puts it elsewhere (checks).
-    let path = match (std::env::var_os("UISON_SSH_CONFIG"), std::env::var_os("HOME")) {
+    let path = match (std::env::var_os("UISON_SSH_CONFIG"), std::env::home_dir()) {
         (Some(p), _) => vfs_local::vpath(std::path::Path::new(&p)),
-        (None, Some(home)) => vfs_local::vpath(std::path::Path::new(&home)).join(".ssh/config"),
+        (None, Some(home)) => vfs_local::vpath(&home).join(".ssh/config"),
         _ => return String::new(),
     };
     let mut s = String::new();
@@ -423,12 +423,13 @@ mod sftp {
         // A Host of ~/.ssh/config: its HostName, User, Port and IdentityFile, unless typed here.
         let conf = vfs_sftp::ssh_config(&ssh_config_text(), &name);
         let host = conf.host_name.clone().unwrap_or(name);
-        let user = user.or(conf.user.clone()).unwrap_or_else(|| std::env::var("USER").unwrap_or_default());
+        // The account's name: `USER`, on Windows `USERNAME`.
+        let user = user.or(conf.user.clone()).unwrap_or_else(|| std::env::var("USER").or_else(|_| std::env::var("USERNAME")).unwrap_or_default());
         if user.is_empty() {
             return Err(bad(t!("no user: type user@host").into()));
         }
         let port = port.or(conf.port).unwrap_or(22);
-        let home = std::env::var_os("HOME").map(PathBuf::from).unwrap_or_default();
+        let home = std::env::home_dir().unwrap_or_default();
         // A password is taken as typed: spaces may be part of it.
         let typed = |k: &str| args.get(k).filter(|v| !v.is_empty()).map(str::to_string);
         let cfg = vfs_sftp::Config {

@@ -22,13 +22,15 @@ impl Default for LocalFs {
     }
 }
 
-/// `/Users/x` → the OS path. Windows: `/C:/Users` → `C:\Users`.
+/// `/Users/x` → the OS path. Windows: `/C:/Users` → `C:\Users`, a share `/\\srv\share/x` → `\\srv\share\x`;
+/// the root `/` holds the drives and has no OS path of its own.
 pub fn os_path(p: &VPath) -> PathBuf {
     #[cfg(windows)]
     {
         let s = p.as_str().trim_start_matches('/');
         let mut out = s.replace('/', "\\");
-        if out.len() == 2 && out.ends_with(':') {
+        // A drive or a share by itself: its root folder (`C:` alone is the current folder on that drive).
+        if !out.is_empty() && !p.as_str()[1..].contains('/') {
             out.push('\\');
         }
         PathBuf::from(out)
@@ -40,9 +42,49 @@ pub fn os_path(p: &VPath) -> PathBuf {
 /// The OS path → `VPath` (for the start folder given on the command line).
 pub fn vpath(p: &Path) -> VPath {
     #[cfg(windows)]
-    return VPath::new(&p.to_string_lossy().replace('\\', "/"));
+    {
+        use std::path::{Component, Prefix};
+        let mut out = VPath::root();
+        for c in p.components() {
+            out = match c {
+                Component::Prefix(pre) => match pre.kind() {
+                    Prefix::Disk(d) | Prefix::VerbatimDisk(d) => out.child(&format!("{}:", (d as char).to_ascii_uppercase())),
+                    Prefix::UNC(srv, share) | Prefix::VerbatimUNC(srv, share) => {
+                        out.child(&format!(r"\\{}\{}", srv.to_string_lossy(), share.to_string_lossy()))
+                    }
+                    _ => out.child(&pre.as_os_str().to_string_lossy().replace('/', "\\")),
+                },
+                Component::RootDir | Component::CurDir => out,
+                Component::ParentDir => out.parent().unwrap_or_else(VPath::root),
+                Component::Normal(n) => out.child(&n.to_string_lossy()),
+            };
+        }
+        out
+    }
     #[cfg(not(windows))]
     VPath::new(&p.to_string_lossy())
+}
+
+/// Windows: the drives there are (`/C:`, `/D:`…) — what the root `/` holds.
+#[cfg(windows)]
+fn drives() -> Vec<String> {
+    unsafe extern "system" {
+        fn GetLogicalDrives() -> u32;
+    }
+    let mask = unsafe { GetLogicalDrives() };
+    (0..26u8).filter(|i| mask & (1 << i) != 0).map(|i| format!("{}:", (b'A' + i) as char)).collect()
+}
+
+/// Windows: free and total bytes of the volume holding `p`.
+#[cfg(windows)]
+fn volume_space(p: &Path) -> Option<(u64, u64)> {
+    use std::os::windows::ffi::OsStrExt;
+    unsafe extern "system" {
+        fn GetDiskFreeSpaceExW(dir: *const u16, avail: *mut u64, total: *mut u64, free: *mut u64) -> i32;
+    }
+    let w: Vec<u16> = p.as_os_str().encode_wide().chain([0]).collect();
+    let (mut avail, mut total, mut free) = (0u64, 0u64, 0u64);
+    (unsafe { GetDiskFreeSpaceExW(w.as_ptr(), &mut avail, &mut total, &mut free) } != 0).then_some((avail, total))
 }
 
 /// A path typed by the user (the command line): absolute, links resolved; `None` if it doesn't exist.
@@ -83,20 +125,30 @@ fn entry(name: String, os: &Path, md: &fs::Metadata) -> Entry {
         const UF_HIDDEN: u32 = 0x8000;
         e.hidden |= md.st_flags() & UF_HIDDEN != 0;
     }
+    #[cfg(windows)]
+    {
+        use std::os::windows::fs::MetadataExt;
+        const FILE_ATTRIBUTE_HIDDEN: u32 = 0x2;
+        e.hidden |= md.file_attributes() & FILE_ATTRIBUTE_HIDDEN != 0;
+    }
     e
 }
 
 /// Same file (the case-only rename on a case-insensitive volume finds the source as the "existing" target).
-fn same_file(a: &fs::Metadata, b: &fs::Metadata) -> bool {
+fn same_file(a: &Path, b: &Path) -> bool {
     #[cfg(unix)]
     {
         use std::os::unix::fs::MetadataExt;
-        a.dev() == b.dev() && a.ino() == b.ino()
+        match (fs::symlink_metadata(a), fs::symlink_metadata(b)) {
+            (Ok(a), Ok(b)) => a.dev() == b.dev() && a.ino() == b.ino(),
+            _ => false,
+        }
     }
+    // Windows: the full path the volume itself gives, in the case it is stored in.
     #[cfg(not(unix))]
-    {
-        let _ = (a, b);
-        false
+    match (fs::canonicalize(a), fs::canonicalize(b)) {
+        (Ok(a), Ok(b)) => a == b,
+        _ => false,
     }
 }
 
@@ -147,6 +199,24 @@ fn volume(p: &Path) -> Option<(String, u64, u64)> {
 #[cfg(target_os = "macos")]
 fn apple_double(dir: &Path) -> bool {
     volume(dir).is_some_and(|(t, _, _)| matches!(t.as_str(), "msdos" | "exfat" | "smbfs" | "nfs" | "webdav"))
+}
+
+/// Windows keeps a name only if it can hold it as it is: it drops a trailing dot or space (`report.` would
+/// land on `report`), refuses `<>:"|?*` and device names (`CON`, `nul.txt`). Such a name is refused here,
+/// before it reaches another file.
+fn check_name(path: &VPath) -> Result<()> {
+    if !cfg!(windows) || path.parent().is_none_or(|p| p.is_root()) {
+        return Ok(());
+    }
+    let n = path.name();
+    let stem = n.split('.').next().unwrap_or("").trim_end().to_ascii_uppercase();
+    let device = matches!(stem.as_str(), "CON" | "PRN" | "AUX" | "NUL" | "CONIN$" | "CONOUT$")
+        || (stem.len() == 4 && (stem.starts_with("COM") || stem.starts_with("LPT")) && stem.as_bytes()[3].is_ascii_digit());
+    let bad_char = n.chars().any(|c| c < ' ' || "<>:\"|?*\\".contains(c));
+    if n.ends_with(['.', ' ']) || bad_char || device {
+        return Err(Error::msg(path, "Windows does not allow this name"));
+    }
+    Ok(())
 }
 
 static TMP_SEQ: AtomicU64 = AtomicU64::new(0);
@@ -276,18 +346,27 @@ impl Source for LocalFs {
                 }
             }
         }
-        if let Some(h) = std::env::var_os("HOME") {
-            out.push(Root { path: vpath(Path::new(&h)), title: "~".into() });
+        #[cfg(windows)]
+        {
+            out.clear();
+            out.extend(drives().into_iter().map(|d| Root { path: VPath::root().child(&d), title: d }));
+        }
+        if let Some(h) = std::env::home_dir() {
+            out.push(Root { path: vpath(&h), title: "~".into() });
         }
         Ok(out)
     }
 
     fn home(&self) -> VPath {
-        std::env::var_os("HOME").map_or_else(VPath::root, |h| vpath(Path::new(&h)))
+        std::env::home_dir().map_or_else(VPath::root, |h| vpath(&h))
     }
 
     fn list(&self, dir: &VPath, cancel: &Cancel) -> Result<Vec<Entry>> {
         cancel.check()?;
+        #[cfg(windows)]
+        if dir.is_root() {
+            return Ok(drives().into_iter().map(|d| Entry::new(d, Kind::Dir)).collect());
+        }
         let os = os_path(dir);
         let rd = fs::read_dir(&os).map_err(|e| Error::io(dir, &e))?;
         #[cfg(target_os = "macos")]
@@ -314,6 +393,10 @@ impl Source for LocalFs {
     }
 
     fn stat(&self, path: &VPath) -> Result<Entry> {
+        #[cfg(windows)]
+        if path.is_root() {
+            return Ok(Entry::new(String::new(), Kind::Dir));
+        }
         let os = os_path(path);
         let md = fs::symlink_metadata(&os).map_err(|e| Error::io(path, &e))?;
         Ok(entry(path.name().to_string(), &os, &md))
@@ -337,6 +420,7 @@ impl Source for LocalFs {
     }
 
     fn create(&self, path: &VPath, opts: &CreateOpts) -> Result<Box<dyn Writer>> {
+        check_name(path)?;
         let target = os_path(path);
         match fs::symlink_metadata(&target) {
             Ok(m) if m.is_dir() => return Err(Error::IsADirectory(path.clone())),
@@ -349,23 +433,37 @@ impl Source for LocalFs {
     }
 
     fn mkdir(&self, path: &VPath) -> Result<()> {
-        fs::create_dir(os_path(path)).map_err(|e| Error::io(path, &e))
+        check_name(path)?;
+        let os = os_path(path);
+        fs::create_dir(&os).map_err(|e| {
+            // Windows says "access denied" for a drive's root (`C:\`): it is there all the same.
+            if e.kind() != io::ErrorKind::AlreadyExists && fs::symlink_metadata(&os).is_ok() {
+                return Error::AlreadyExists(path.clone());
+            }
+            Error::io(path, &e)
+        })
     }
 
     fn remove(&self, path: &VPath) -> Result<()> {
         let os = os_path(path);
         let md = fs::symlink_metadata(&os).map_err(|e| Error::io(path, &e))?;
-        if md.is_dir() { fs::remove_dir(&os) } else { fs::remove_file(&os) }.map_err(|e| Error::io(path, &e))
+        // Windows: a link to a folder (or a junction) goes away as a folder, though it is not one.
+        #[cfg(windows)]
+        let dir = md.is_dir() || std::os::windows::fs::FileTypeExt::is_symlink_dir(&md.file_type());
+        #[cfg(not(windows))]
+        let dir = md.is_dir();
+        if dir { fs::remove_dir(&os) } else { fs::remove_file(&os) }.map_err(|e| Error::io(path, &e))
     }
 
     fn rename(&self, from: &VPath, to: &VPath) -> Result<()> {
+        check_name(to)?;
         let (a, b) = (os_path(from), os_path(to));
-        let src = fs::symlink_metadata(&a).map_err(|e| Error::io(from, &e))?;
+        fs::symlink_metadata(&a).map_err(|e| Error::io(from, &e))?;
         if to.starts_with(from) && to != from {
             return Err(Error::msg(to, "cannot move a folder into itself"));
         }
         // The same file under another case of the name: a case-only rename, the one rename that "replaces".
-        if fs::symlink_metadata(&b).is_ok_and(|dst| same_file(&src, &dst)) {
+        if same_file(&a, &b) {
             return fs::rename(&a, &b).map_err(|e| Error::io(to, &e));
         }
         rename_excl(&a, &b).map_err(|e| Error::io(to, &e))
@@ -404,8 +502,18 @@ impl Source for LocalFs {
     }
 
     fn set_mtime(&self, path: &VPath, t: SystemTime) -> Result<()> {
-        let f = File::open(os_path(path)).map_err(|e| Error::io(path, &e))?;
-        f.set_modified(t).map_err(|e| Error::io(path, &e))
+        let os = os_path(path);
+        // Windows changes times only through a handle opened for that (a folder's — with backup semantics).
+        #[cfg(windows)]
+        let f = {
+            use std::os::windows::fs::OpenOptionsExt;
+            const FILE_WRITE_ATTRIBUTES: u32 = 0x100;
+            const FILE_FLAG_BACKUP_SEMANTICS: u32 = 0x0200_0000;
+            OpenOptions::new().access_mode(FILE_WRITE_ATTRIBUTES).custom_flags(FILE_FLAG_BACKUP_SEMANTICS).open(&os)
+        };
+        #[cfg(not(windows))]
+        let f = File::open(&os);
+        f.map_err(|e| Error::io(path, &e))?.set_modified(t).map_err(|e| Error::io(path, &e))
     }
 
     #[cfg(unix)]
@@ -440,13 +548,17 @@ impl Source for LocalFs {
         volume(&os_path(dir)).map(|(_, free, total)| (free, total))
     }
 
+    #[cfg(windows)]
+    fn space(&self, dir: &VPath) -> Option<(u64, u64)> {
+        if dir.is_root() {
+            return None;
+        }
+        volume_space(&os_path(dir))
+    }
+
     /// The same inode: `/tmp/x` and `/private/tmp/x`, a path through a link, a hard link, another case.
     fn same_file(&self, a: &VPath, b: &VPath) -> bool {
-        a == b
-            || match (fs::symlink_metadata(os_path(a)), fs::symlink_metadata(os_path(b))) {
-                (Ok(x), Ok(y)) => same_file(&x, &y),
-                _ => false,
-            }
+        a == b || same_file(&os_path(a), &os_path(b))
     }
 }
 
@@ -481,6 +593,23 @@ mod tests {
         fs::remove_dir_all(dir).unwrap();
     }
 
+    #[cfg(windows)]
+    #[test]
+    fn windows_paths() {
+        for (os, v) in [(r"C:\Users\x", "/C:/Users/x"), (r"\\?\C:\Users", "/C:/Users"), (r"d:\", "/D:"), (r"\\srv\share\a", r"/\\srv\share/a")] {
+            assert_eq!(vpath(Path::new(os)).as_str(), v, "{os}");
+        }
+        for (v, os) in [("/C:/Users/x", r"C:\Users\x"), ("/D:", r"D:\"), (r"/\\srv\share", r"\\srv\share\"), ("/", "")] {
+            assert_eq!(os_path(&VPath::new(v)), PathBuf::from(os), "{v}");
+        }
+        let drives = LocalFs.list(&VPath::root(), &Cancel::new()).unwrap();
+        assert!(drives.iter().any(|e| e.name == "C:" && e.is_dir()), "{drives:?}");
+        let tmp = vpath(&std::env::temp_dir());
+        assert!(LocalFs.list(&tmp, &Cancel::new()).is_ok(), "{tmp}");
+        assert!(LocalFs.space(&tmp).is_some_and(|(free, total)| free > 0 && total >= free));
+    }
+
+    #[cfg(unix)]
     #[test]
     fn links_show_their_target() {
         let dir = scratch("links");

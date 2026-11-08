@@ -264,7 +264,7 @@ impl Viewer {
 
     /// Position for the header: percent and offset.
     pub fn position(&self) -> String {
-        let pct = if self.size == 0 { 100 } else { (self.top * 100 / self.size).min(100) };
+        let pct = (self.top * 100).checked_div(self.size).map_or(100, |p| p.min(100));
         if self.image {
             let note = if self.note.is_empty() { String::new() } else { format!("{}  ·  ", self.note) };
             return format!("{}  ·  {note}{}", t!("picture"), crate::format::count(self.size, "byte"));

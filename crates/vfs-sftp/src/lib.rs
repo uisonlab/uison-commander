@@ -23,6 +23,7 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use russh::client::{self, Handle};
 use russh::keys::agent::AgentIdentity;
+use russh::keys::agent::client::{AgentClient, AgentStream};
 use russh::keys::{PrivateKeyWithHashAlg, PublicKeyOrCertificate};
 use russh_sftp::client::RawSftpSession;
 use russh_sftp::client::error::Error as SftpError;
@@ -340,7 +341,25 @@ impl client::Handler for HostCheck {
 
 /// `~/.ssh/<name>`.
 fn ssh_file(name: &str) -> Option<PathBuf> {
-    std::env::var_os("HOME").map(|h| PathBuf::from(h).join(".ssh").join(name))
+    std::env::home_dir().map(|h| h.join(".ssh").join(name))
+}
+
+type Agent = AgentClient<Box<dyn AgentStream + Send + Unpin>>;
+
+/// The running ssh-agent: `SSH_AUTH_SOCK` on Unix; on Windows the OpenSSH agent's pipe, else Pageant.
+async fn agent() -> Option<Agent> {
+    #[cfg(unix)]
+    return AgentClient::connect_env().await.ok().map(AgentClient::dynamic);
+    #[cfg(windows)]
+    {
+        let pipe = std::env::var("SSH_AUTH_SOCK").unwrap_or_else(|_| r"\\.\pipe\openssh-ssh-agent".into());
+        if let Ok(a) = AgentClient::connect_named_pipe(pipe).await {
+            return Some(a.dynamic());
+        }
+        AgentClient::connect_pageant().await.ok().map(AgentClient::dynamic)
+    }
+    #[cfg(not(any(unix, windows)))]
+    None
 }
 
 /// Sign in as the config says; the error tells what was tried.
@@ -357,7 +376,7 @@ async fn sign_in(s: &mut Handle<HostCheck>, cfg: &Config) -> std::result::Result
         return if ok { Ok(()) } else { Err(format!("{who}: the server did not accept the key {}.", path.display())) };
     }
     let mut tried = Vec::new();
-    if let Ok(mut agent) = russh::keys::agent::client::AgentClient::connect_env().await {
+    if let Some(mut agent) = agent().await {
         let ids = agent.request_identities().await.unwrap_or_default();
         if !ids.is_empty() {
             tried.push(format!("{} key(s) of ssh-agent", ids.len()));

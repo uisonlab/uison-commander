@@ -245,11 +245,31 @@ fn bar(child: Node) -> Node {
     container().fill("$theme.card").child(child)
 }
 
-/// An SF Symbol in the ink of the current theme (`crate::icons::symbol`); nothing where there are none.
+/// An SF Symbol in the ink of the current theme (`crate::icons::symbol`). Where there are none (not a Mac), a
+/// character in its place for the buttons that have no word (`stand_in`), nothing for the rest.
 fn sym(name: &str, size: f32) -> Node {
     let (light, dark) = (crate::icons::symbol(name, false), crate::icons::symbol(name, true));
+    if light.is_empty()
+        && let Some(c) = stand_in(name)
+    {
+        return text(c).size(size).max_lines(1);
+    }
     let src = json(&format!(r#"{{ switch: "@look.dark", cases: {{ true: "{dark}" }}, default: "{light}" }}"#));
     image(src).w(size).h(size).fit("contain").visible(!light.is_empty())
+}
+
+/// The character for a symbol that is a button by itself (back, settings, the themes).
+fn stand_in(name: &str) -> Option<&'static str> {
+    Some(match name {
+        "chevron.left" => "‹",
+        "chevron.right" => "›",
+        // Not ⚙ and ☀: those come out as color emoji.
+        "gearshape" => "⛭",
+        "sun.max" => "☼",
+        "moon" => "☾",
+        "circle.lefthalf.filled" => "◐",
+        _ => return None,
+    })
 }
 
 fn keybar() -> Node {

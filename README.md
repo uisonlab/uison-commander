@@ -8,8 +8,9 @@ WebDAV. Copying, moving and deleting are the same code for all of them, so local
 SFTP → WebDAV works just like local → local. The release binary is about 6 MB with every
 network source and about 1 MB without them.
 
-> **Status:** early (0.1). Developed and tested on macOS (Apple Silicon). uison itself runs on
-> Windows and Linux too, but the commander has not been ported or tested there yet.
+> **Status:** early (0.1). Developed on macOS (Apple Silicon), also runs on Windows 10/11
+> (x86_64); there the tests pass, but network sources have not yet been tried against live servers.
+> uison runs on Linux too, but the commander has not been ported or tested there yet.
 
 ## Features
 
@@ -26,7 +27,8 @@ network source and about 1 MB without them.
 - **Viewer (F3)** for text, hex and images. It reads a window around what is on screen, so a
   multi-gigabyte log opens at once from any source, with search forwards and backwards.
 - **Remembered connections.** Ctrl+F opens the list of storages. Settings go to
-  `~/.config/uison-commander/connections.json`, passwords go to the macOS Keychain.
+  `~/.config/uison-commander/connections.json` (on Windows `%APPDATA%\uison-commander`),
+  passwords go to the macOS Keychain or the Windows Credential Manager.
 - **Light and dark themes, English and Russian** (the gear in the toolbar).
 
 ### Sources
@@ -59,6 +61,17 @@ small local-only build:
 cargo build --release -p commander --no-default-features
 ```
 
+### Windows
+
+`build_scripts/build.sh` is for macOS. On Windows (MSVC toolchain) build with Cargo:
+
+```sh
+cargo build --release -p commander   # → target\release\uison-commander.exe
+```
+
+The root `/` of the local disk lists the drives (`C:`, `D:`, …); paths are shown and can be typed
+as Windows writes them (`C:\Users\me`). F4 opens a file in Notepad.
+
 ### Code signing on macOS
 
 `build_scripts/build.sh` and `cargo run` sign the binary with an Apple Development identity
@@ -77,7 +90,8 @@ target/release/uison-commander --mem --slow 30    # make it slow (ms per call): 
 ```
 
 Panels, theme and language are saved in `~/.config/uison-commander/state.json`. Trusted FTPS
-certificates are saved in `~/.config/uison-commander/known_certs`.
+certificates are saved in `~/.config/uison-commander/known_certs`. On Windows that folder is
+`%APPDATA%\uison-commander`.
 
 ## Project layout
 

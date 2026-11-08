@@ -218,7 +218,7 @@ impl App {
         d.hints = c.hints.iter().map(|(k, h)| (k.to_string(), h.to_string())).collect();
         for k in kept {
             d.hints.retain(|(id, _)| id != k);
-            d.hints.push((k.clone(), "empty — the one in the Keychain".into()));
+            d.hints.push((k.clone(), crate::secrets::KEPT_HINT.into()));
         }
         d.files = c.files.iter().map(|f| f.to_string()).collect();
         d.buttons = vec![
@@ -323,7 +323,7 @@ impl App {
         let text = if items.is_empty() {
             t!("Nothing here yet: add a connection — it is kept here once it works.")
         } else {
-            t!("Enter or a double click connects. Passwords are kept in the Keychain.")
+            t!(crate::secrets::KEPT_NOTE)
         };
         let buttons = vec![Button::new(t!("Connect"), "primary", Act::PickRoot { side }), Button::new(t!("Close"), "secondary", Act::Close)];
         let mut d = Dialog::new(Kind::List, t!("Connections"), text).buttons(buttons);

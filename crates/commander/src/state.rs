@@ -27,13 +27,18 @@ pub struct State {
     pub lang: Lang,
 }
 
-/// `~/.config/uison-commander`, or `UISON_CONFIG_DIR` (checks keep the user's files out of it).
+/// `~/.config/uison-commander` (on Windows `%APPDATA%\uison-commander`), or `UISON_CONFIG_DIR` (checks keep
+/// the user's files out of it).
 pub fn config_dir() -> Option<VPath> {
     if let Some(d) = std::env::var_os("UISON_CONFIG_DIR") {
         return Some(vfs_local::vpath(std::path::Path::new(&d)));
     }
-    let home = std::env::var_os("HOME")?;
-    Some(vfs_local::vpath(std::path::Path::new(&home)).join(".config/uison-commander"))
+    if cfg!(windows) {
+        let appdata = std::env::var_os("APPDATA")?;
+        return Some(vfs_local::vpath(std::path::Path::new(&appdata)).child("uison-commander"));
+    }
+    let home = std::env::home_dir()?;
+    Some(vfs_local::vpath(&home).join(".config/uison-commander"))
 }
 
 fn file() -> Option<VPath> {

@@ -227,7 +227,7 @@ pub fn build(sources: Vec<Arc<dyn Source>>, start: Start) -> Ui {
     on(&mut ui, &app, "dlgBrowse", |_, cx| {
         let Some(i) = cx.key.strip_prefix("dlg-br").and_then(|n| n.parse::<usize>().ok()) else { return };
         let field = format!("dlg.params.{i}.value");
-        let home = std::env::var_os("HOME").map(std::path::PathBuf::from).unwrap_or_default();
+        let home = std::env::home_dir().unwrap_or_default();
         let typed = cx.data.str(&field).trim().to_string();
         let typed = match typed.strip_prefix("~/") {
             Some(rest) => home.join(rest),
@@ -235,13 +235,20 @@ pub fn build(sources: Vec<Arc<dyn Source>>, start: Start) -> Ui {
         };
         let start = typed.parent().filter(|p| p.is_absolute()).map_or_else(|| home.join(".ssh"), |p| p.to_path_buf());
         #[cfg(target_os = "macos")]
-        if let Some(path) = crate::macos::choose_file(&start, t!("Choose the private key (not the .pub file)")) {
-            // Under the home folder as ~/…: shorter, and the same on another Mac.
-            let shown = std::path::Path::new(&path).strip_prefix(&home).map_or(path.clone(), |r| format!("~/{}", r.to_string_lossy()));
+        let chosen = crate::macos::choose_file(&start, t!("Choose the private key (not the .pub file)"));
+        #[cfg(windows)]
+        let chosen = crate::windows::choose_file(&start, t!("Choose the private key (not the .pub file)"));
+        #[cfg(not(any(target_os = "macos", windows)))]
+        let chosen: Option<String> = {
+            let _ = start;
+            None
+        };
+        if let Some(path) = chosen {
+            // Under the home folder as ~/…: shorter, and the same on another computer (`/` on Windows too).
+            let shown =
+                std::path::Path::new(&path).strip_prefix(&home).map_or(path.clone(), |r| format!("~/{}", r.to_string_lossy().replace('\\', "/")));
             cx.data.set(&field, shown);
         }
-        #[cfg(not(target_os = "macos"))]
-        let _ = start;
     });
     // Properties: the number follows the ticks.
     on(&mut ui, &app, "permTick", |_, cx| {

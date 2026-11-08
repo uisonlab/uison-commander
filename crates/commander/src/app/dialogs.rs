@@ -291,8 +291,9 @@ impl App {
                         if i == cur && self.panels[side].dir.starts_with(&root.path) && path.len() > best {
                             (here, best) = (items.len(), path.len());
                         }
-                        // The path only where it says more than the name (`~` — /Users/x; not `/` — /).
-                        let note = if path == root.title { String::new() } else { path };
+                        // The path only where it says more than the name (`~` — /Users/x; not `/` — /, `C:` — C:\).
+                        let shown = format::path(&*self.sources[i], &root.path);
+                        let note = if path == root.title || shown.trim_end_matches('\\') == root.title { String::new() } else { shown };
                         items.push(item(crate::i18n::tr_quiet(&root.title).to_string(), note, root.path.clone()));
                     }
                 }
