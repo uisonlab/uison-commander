@@ -1,0 +1,6 @@
+[package]
+name = "vfs"
+version.workspace = true
+edition.workspace = true
+publish.workspace = true
+description = "The source contract: what a panel can show and operations can read and write"

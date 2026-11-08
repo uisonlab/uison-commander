@@ -1,0 +1,12 @@
+[package]
+name = "ops"
+version.workspace = true
+edition.workspace = true
+publish.workspace = true
+description = "Copy, move, delete and mkdir over sources: plan, progress, conflicts, cancellation"
+
+[dependencies]
+vfs.workspace = true
+
+[dev-dependencies]
+vfs-local.workspace = true

@@ -1,0 +1,20 @@
+// The real window (macOS): the settings — the theme (the window's frame follows) and the language.
+// UISON_CONFIG_DIR=/tmp/uc UISON_SCRIPT=scenarios/settings.json UISON_CAPTURE=out/settings target/release/uison-commander --mem
+[
+  ["wait", 800],
+  ["click", "tb-settings"],
+  ["capture", "01_settings", 400],
+  ["click", "set-dark"],
+  ["capture", "02_dark", 600],
+  ["click", "set-ru"],
+  ["capture", "03_dark_ru", 400],
+  ["click", "set-light"],
+  ["capture", "04_light_ru", 600],
+  ["key", "Escape", ""],
+  ["click", "tb-settings"],
+  ["click", "set-system"],
+  ["click", "set-en"],
+  ["key", "Escape", ""],
+  ["capture", "05_back", 600],
+  ["done"]
+]

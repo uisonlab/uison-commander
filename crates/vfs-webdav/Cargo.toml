@@ -1,0 +1,23 @@
+[package]
+name = "vfs-webdav"
+version.workspace = true
+edition.workspace = true
+publish.workspace = true
+description = "Files on a WebDAV server (Nextcloud, ownCloud, Apache, rclone) as a vfs source"
+
+[dependencies]
+vfs.workspace = true
+vfs-rt.workspace = true
+# The HTTP stack aws-sdk-s3 already brings (hyper 1, rustls on ring): WebDAV adds little to the binary.
+hyper = { version = "1", default-features = false, features = ["client", "http1"] }
+hyper-util = { version = "0.1", default-features = false, features = ["client-legacy", "http1", "tokio"] }
+hyper-rustls = { version = "0.27", default-features = false, features = ["http1", "ring", "native-tokio", "tls12"] }
+rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12"] }
+http-body = "1"
+http-body-util = "0.1"
+bytes = "1"
+xmlparser = "0.13"
+tokio = { version = "1", features = ["rt-multi-thread", "net", "time", "sync"] }
+
+[dev-dependencies]
+ops.workspace = true

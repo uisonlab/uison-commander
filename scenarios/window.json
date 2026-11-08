@@ -1,0 +1,20 @@
+// The real window (macOS): the main keys and dialogs.
+// UISON_SCRIPT=scenarios/window.json UISON_CAPTURE=out/window target/release/uison-commander --mem
+[
+  ["wait", 800],
+  ["capture", "01_start", 300],
+  ["key", "Down", ""], ["key", "Insert", ""], ["key", "Down", ""], ["key", "Insert", ""],
+  ["capture", "02_selected", 300],
+  ["key", "F5", ""],
+  ["capture", "03_copy", 300],
+  ["key", "Escape", ""],
+  ["key", "F1", "alt"],
+  ["capture", "04_roots", 300],
+  ["key", "Escape", ""],
+  ["key", "Tab", ""], ["key", "End", ""],
+  ["capture", "05_other_panel_end", 300],
+  ["key", "F7", ""],
+  ["capture", "06_mkdir", 300],
+  ["key", "Escape", ""],
+  ["done"]
+]

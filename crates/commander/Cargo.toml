@@ -1,0 +1,33 @@
+[package]
+name = "commander"
+version.workspace = true
+edition.workspace = true
+publish.workspace = true
+homepage.workspace = true
+description = "A two-panel file manager on uison"
+
+[[bin]]
+name = "uison-commander"
+path = "src/main.rs"
+
+[features]
+default = ["s3", "sftp", "ftp", "webdav"]
+# The network sources: each is a sizeable part of the program (Task 2, stage 6).
+s3 = ["dep:vfs-s3"]
+sftp = ["dep:vfs-sftp"]
+ftp = ["dep:vfs-ftp"]
+webdav = ["dep:vfs-webdav"]
+
+[dependencies]
+vfs.workspace = true
+vfs-local.workspace = true
+vfs-s3 = { workspace = true, optional = true }
+vfs-sftp = { workspace = true, optional = true }
+vfs-ftp = { workspace = true, optional = true }
+vfs-webdav = { workspace = true, optional = true }
+ops.workspace = true
+uison.workspace = true
+
+# Passwords of remembered connections in the Keychain.
+[target.'cfg(target_os = "macos")'.dependencies]
+security-framework = { version = "3", default-features = false }

@@ -1,0 +1,16 @@
+[package]
+name = "vfs-sftp"
+version.workspace = true
+edition.workspace = true
+publish.workspace = true
+description = "Files on a server over SSH (SFTP) as a vfs source"
+
+[dependencies]
+vfs.workspace = true
+vfs-rt.workspace = true
+russh = { version = "0.65", default-features = false, features = ["ring", "flate2"] }
+russh-sftp = "2"
+tokio = { version = "1", features = ["rt-multi-thread", "net", "time", "io-util", "sync"] }
+
+[dev-dependencies]
+ops.workspace = true

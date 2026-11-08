@@ -1,0 +1,28 @@
+[workspace]
+resolver = "3"
+members = ["crates/*"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.88"
+publish = false
+homepage = "https://github.com/uisonlab/uison-commander"
+
+[workspace.dependencies]
+vfs = { path = "crates/vfs" }
+vfs-local = { path = "crates/vfs-local" }
+vfs-rt = { path = "crates/vfs-rt" }
+vfs-s3 = { path = "crates/vfs-s3" }
+vfs-sftp = { path = "crates/vfs-sftp" }
+vfs-webdav = { path = "crates/vfs-webdav" }
+vfs-ftp = { path = "crates/vfs-ftp" }
+ops = { path = "crates/ops" }
+uison = { path = "../uison/crates/uison" }
+
+[profile.release]
+opt-level = "s"
+lto = true
+codegen-units = 1
+panic = "abort"
+strip = true

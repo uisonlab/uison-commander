@@ -1,0 +1,3 @@
+# `cargo run` signs the commander binary first: the Keychain then knows it across rebuilds (tools/sign.sh).
+[target.'cfg(target_os = "macos")']
+runner = "tools/cargo-runner.sh"

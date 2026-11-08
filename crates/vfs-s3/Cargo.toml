@@ -1,0 +1,22 @@
+[package]
+name = "vfs-s3"
+version.workspace = true
+edition.workspace = true
+publish.workspace = true
+description = "Amazon S3 and compatible storages (MinIO, R2) as a vfs source"
+
+[dependencies]
+vfs.workspace = true
+vfs-rt.workspace = true
+# Without the defaults: "rustls" (a second, legacy HTTP stack: hyper 0.14, rustls 0.21), "sigv4a"
+# (multi-region access points only) and "default-https-client" (rustls on aws-lc, a C library); the HTTP
+# client is rustls on ring, which russh (SFTP) brings anyway. Task 2, stage 6: 6.98 → see Task2.md.
+aws-sdk-s3 = { version = "1", default-features = false, features = ["rt-tokio", "http-1x"] }
+aws-smithy-http-client = { version = "1", default-features = false, features = ["rustls-ring"] }
+tokio = { version = "1", features = ["rt-multi-thread", "net", "time"] }
+bytes = "1"
+
+[dev-dependencies]
+ops.workspace = true
+aws-smithy-http-client = { version = "1", default-features = false, features = ["rustls-ring"] }
+tokio = { version = "1", features = ["rt-multi-thread"] }

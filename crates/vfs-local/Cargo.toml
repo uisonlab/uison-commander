@@ -1,0 +1,9 @@
+[package]
+name = "vfs-local"
+version.workspace = true
+edition.workspace = true
+publish.workspace = true
+description = "The local file system as a source"
+
+[dependencies]
+vfs.workspace = true

@@ -1,0 +1,16 @@
+[package]
+name = "vfs-ftp"
+version.workspace = true
+edition.workspace = true
+publish.workspace = true
+description = "Files on an FTP or FTPS server as a vfs source"
+
+[dependencies]
+vfs.workspace = true
+# Blocking, on std::net: rustls's own stream; ring and the system's roots as aws-sdk-s3 and WebDAV already have them.
+rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12"] }
+rustls-native-certs = "0.8"
+ring = "0.17"
+
+[dev-dependencies]
+ops.workspace = true

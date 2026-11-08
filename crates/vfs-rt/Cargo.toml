@@ -1,0 +1,10 @@
+[package]
+name = "vfs-rt"
+version.workspace = true
+edition.workspace = true
+publish.workspace = true
+description = "The one Tokio runtime of the network sources, and waiting on it with cancellation"
+
+[dependencies]
+vfs.workspace = true
+tokio = { version = "1", features = ["rt-multi-thread", "time", "macros"] }

@@ -1,0 +1,23 @@
+# Build output, PNG frames and window captures, test environment (keys, certificates)
+/target
+/out
+
+# Claude Code: instructions, settings, task notes
+CLAUDE.md
+CLAUDE.local.md
+.claude/
+Task*.md
+
+# Editors
+.vscode/
+.idea/
+*.swp
+*~
+
+# macOS
+.DS_Store
+._*
+
+# Merge and patch leftovers
+*.orig
+*.rej
