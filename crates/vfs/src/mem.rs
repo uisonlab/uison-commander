@@ -3,7 +3,7 @@
 
 use std::collections::{BTreeMap, HashSet};
 use std::io::{self, Cursor, Read, Write};
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Condvar, Mutex};
 use std::time::{Duration, SystemTime};
 
 use crate::*;
@@ -39,6 +39,8 @@ struct State {
     ignore_case: bool,
     /// Writers created and not yet finished or dropped.
     writers: usize,
+    /// Calls that wait (`slow`) stop before the delay until `release`.
+    held: bool,
 }
 
 impl State {
@@ -88,6 +90,8 @@ pub struct MemFs {
     /// `rename` is declared but says `Unsupported` (like the local disk between two volumes).
     rename_unsupported: bool,
     st: Arc<Mutex<State>>,
+    /// Wakes the calls held by `hold`.
+    go: Arc<Condvar>,
 }
 
 impl MemFs {
@@ -102,8 +106,9 @@ impl MemFs {
             set_mtime: true,
             case_sensitive: true,
         };
-        let st = State { items: BTreeMap::new(), fail: HashSet::new(), ignore_case: false, writers: 0 };
-        MemFs { id: id.into(), caps, delay: Duration::ZERO, rename_unsupported: false, st: Arc::new(Mutex::new(st)) }
+        let st = State { items: BTreeMap::new(), fail: HashSet::new(), ignore_case: false, writers: 0, held: false };
+        let st = Arc::new(Mutex::new(st));
+        MemFs { id: id.into(), caps, delay: Duration::ZERO, rename_unsupported: false, st, go: Arc::new(Condvar::new()) }
     }
 
     /// `A.txt` and `a.txt` are one file, as on macOS and Windows volumes. Call before adding anything.
@@ -128,6 +133,18 @@ impl MemFs {
     pub fn slow(mut self, ms: u64) -> MemFs {
         self.delay = Duration::from_millis(ms);
         self
+    }
+
+    /// The next listings, stats, opens and roots of a slow source wait until `release`: an answer that
+    /// comes exactly when a test says, not after a delay a slow machine may outrun (calls already in their
+    /// delay go on).
+    pub fn hold(&self) {
+        self.st.lock().unwrap().held = true;
+    }
+
+    pub fn release(&self) {
+        self.st.lock().unwrap().held = false;
+        self.go.notify_all();
     }
 
     /// Without `rename`: moves have to take the copy-and-delete path (like S3).
@@ -213,6 +230,11 @@ impl MemFs {
 
     fn wait(&self) {
         if !self.delay.is_zero() {
+            let mut st = self.st.lock().unwrap();
+            while st.held {
+                st = self.go.wait(st).unwrap();
+            }
+            drop(st);
             std::thread::sleep(self.delay);
         }
     }

@@ -721,6 +721,9 @@ mod tests {
         r.click_text("notes", MouseButton::Left);
         r.h.event(Event::Key(key("f5"))).unwrap();
         r.wait(Duration::from_millis(500));
+        // The copy's answers wait until the form is connecting: on a slow machine (CI) a delay alone was
+        // outrun, and the question came before the form.
+        mem.hold();
         r.h.event(Event::Key(key("enter"))).unwrap();
         r.wait(Duration::from_millis(100));
         r.click_key("job-bg", MouseButton::Left);
@@ -729,6 +732,7 @@ mod tests {
         assert!(!r.text().contains("The file already exists"), "too early: {}", r.text());
         r.keys("enter");
         assert!(r.text().contains("Connecting…"), "{}", r.text());
+        mem.release();
         r.wait_for("The file already exists", Duration::from_secs(10));
         tx.send(()).unwrap();
         server.join().unwrap();
