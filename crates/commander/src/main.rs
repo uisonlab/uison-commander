@@ -15,6 +15,8 @@ mod format;
 mod icons;
 mod jobs;
 mod keymap;
+#[cfg(target_os = "linux")]
+mod linux;
 #[cfg(target_os = "macos")]
 mod macos;
 mod panel;
@@ -24,8 +26,6 @@ mod state;
 mod viewer;
 #[cfg(windows)]
 mod windows;
-#[cfg(target_os = "linux")]
-mod linux;
 
 #[cfg(any(target_os = "macos", target_os = "linux", windows))]
 mod check;

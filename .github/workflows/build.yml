@@ -1,0 +1,169 @@
+# uison-commander for macOS (universal: Apple silicon + Intel), Windows x64 and Linux x86_64: tests, clippy,
+# release build and archives as artifacts. Runs only for a tag v* (then also a GitHub release of that
+# version) or by hand (artifacts only, no release).
+#
+# uison is a path dependency (../uison): both repositories are checked out side by side, uison at
+# `uison_ref` (main by default — Cargo.lock follows it).
+name: Build
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      uison_ref:
+        description: uison branch, tag or commit
+        default: main
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+
+defaults:
+  run:
+    working-directory: uison-commander
+
+jobs:
+  build:
+    name: ${{ matrix.name }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: linux-x86_64
+            os: ubuntu-22.04 # older glibc = runs on more distros
+            target: x86_64-unknown-linux-gnu
+          - name: windows-x86_64
+            os: windows-latest
+            target: x86_64-pc-windows-msvc
+          - name: macos-universal
+            os: macos-latest
+            target: aarch64-apple-darwin
+            extra_target: x86_64-apple-darwin
+
+    steps:
+      # Files as they are in the repository: no CRLF on Windows.
+      - name: Keep line endings
+        working-directory: .
+        run: git config --global core.autocrlf false
+
+      - uses: actions/checkout@v4
+        with:
+          path: uison-commander
+
+      - uses: actions/checkout@v4
+        with:
+          repository: uisonlab/uison
+          ref: ${{ inputs.uison_ref || 'main' }}
+          path: uison
+
+      # The version lives in Cargo.toml only; the tag must be "v" + that version.
+      - name: Check that the tag is Cargo.toml's version
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: bash
+        run: |
+          VERSION="v$(sed -n 's/^version *= *"\(.*\)"/\1/p' Cargo.toml | head -n1)"
+          if [ "$VERSION" != "${{ github.ref_name }}" ]; then
+            echo "::error::The tag is ${{ github.ref_name }} but Cargo.toml has $VERSION"
+            exit 1
+          fi
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}${{ matrix.extra_target && format(',{0}', matrix.extra_target) || '' }}
+          components: clippy, rustfmt
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: ${{ matrix.name }}
+          workspaces: uison-commander
+
+      # No -dev packages: uison loads Cairo and Pango at run time (dlopen), the commander gdk-pixbuf. The tests
+      # draw frames (Cairo, Pango) and look up file icons in a desktop theme: Adwaita in full (22.04's
+      # adwaita-icon-theme is a subset without text-x-generic), MIME globs, the SVG loader.
+      - name: Libraries the tests load
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq --no-install-recommends libcairo2 libpango-1.0-0 libpangocairo-1.0-0 \
+            libgdk-pixbuf-2.0-0 librsvg2-common adwaita-icon-theme-full shared-mime-info
+
+      - name: Format
+        if: runner.os == 'Linux'
+        run: cargo fmt --check
+
+      - name: Clippy
+        run: cargo clippy --workspace --all-targets --locked --target ${{ matrix.target }} -- -D warnings
+
+      # Network sources are skipped without UISON_* servers (vfs::conformance::skip).
+      - name: Test
+        run: cargo test --workspace --locked --target ${{ matrix.target }}
+
+      - name: Build release
+        run: cargo build --release --locked -p commander --target ${{ matrix.target }}
+
+      - name: Build release (second macOS architecture)
+        if: matrix.extra_target
+        run: cargo build --release --locked -p commander --target ${{ matrix.extra_target }}
+
+      - name: Package
+        shell: bash
+        run: |
+          set -euo pipefail
+          name="uison-commander-${{ matrix.name }}"
+          out="$GITHUB_WORKSPACE/$name"
+          mkdir -p dist
+          cp README.md LICENSE dist/
+          case "${{ runner.os }}" in
+            Windows)
+              bin=dist/uison-commander.exe
+              cp "target/${{ matrix.target }}/release/uison-commander.exe" "$bin"
+              (cd dist && 7z a "$out.zip" . >/dev/null)
+              ;;
+            macOS)
+              bin=dist/uison-commander
+              lipo -create -output "$bin" \
+                "target/${{ matrix.target }}/release/uison-commander" \
+                "target/${{ matrix.extra_target }}/release/uison-commander"
+              # Ad-hoc: Apple silicon runs it (not notarized: xattr -d com.apple.quarantine after download).
+              codesign --force --sign - "$bin"
+              lipo -info "$bin"
+              (cd dist && ditto -c -k . "$out.zip")
+              ;;
+            Linux)
+              bin=dist/uison-commander
+              cp "target/${{ matrix.target }}/release/uison-commander" "$bin"
+              tar -czf "$out.tar.gz" -C dist .
+              ;;
+          esac
+          echo "### $name" >> "$GITHUB_STEP_SUMMARY"
+          size=$(wc -c < "$bin" | tr -d ' ')
+          awk -v s="$size" 'BEGIN { printf "Binary size: %.2f MiB (%d bytes)\n", s / 1048576, s }' | tee -a "$GITHUB_STEP_SUMMARY"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: uison-commander-${{ matrix.name }}
+          path: |
+            uison-commander-${{ matrix.name }}.zip
+            uison-commander-${{ matrix.name }}.tar.gz
+          if-no-files-found: error
+
+  release:
+    name: Release
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: artifacts/*
+          generate_release_notes: true

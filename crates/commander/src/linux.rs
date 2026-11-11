@@ -303,7 +303,10 @@ pub(crate) fn symbol_png(name: &str, rgb: [f64; 3], px: i32) -> Option<Vec<u8>> 
     let ink = rgb.map(|c| (c * 255.0).round() as u8);
     let find = |n: String| icons.find(&n, px);
     // The symbolic one of every name first: a colored icon of a theme turns into a flat silhouette.
-    let file = symbol_names(name).iter().find_map(|n| find(format!("{n}-symbolic"))).or_else(|| symbol_names(name).iter().find_map(|n| find(n.to_string())))?;
+    let file = symbol_names(name)
+        .iter()
+        .find_map(|n| find(format!("{n}-symbolic")))
+        .or_else(|| symbol_names(name).iter().find_map(|n| find(n.to_string())))?;
     pixbuf::to_png(&file, px, Some(ink))
 }
 

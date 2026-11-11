@@ -264,7 +264,10 @@ impl Dialog {
                         m.push(("value".into(), v));
                     }
                     m.push(("hint".into(), Json::from(hint)));
-                    m.push(("browse".into(), Json::from(cfg!(any(target_os = "macos", target_os = "linux", windows)) && self.files.iter().any(|f| f == p.id()))));
+                    m.push((
+                        "browse".into(),
+                        Json::from(cfg!(any(target_os = "macos", target_os = "linux", windows)) && self.files.iter().any(|f| f == p.id())),
+                    ));
                 }
                 j
             })
