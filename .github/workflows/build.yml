@@ -98,9 +98,11 @@ jobs:
       - name: Clippy
         run: cargo clippy --workspace --all-targets --locked --target ${{ matrix.target }} -- -D warnings
 
-      # Network sources are skipped without UISON_* servers (vfs::conformance::skip).
+      # Network sources are skipped without UISON_* servers (vfs::conformance::skip). The UI scenarios
+      # (check::tests) are run locally only: they go in real time (double clicks, slow sources), and a shared
+      # runner, macOS above all, is several times slower than a desktop.
       - name: Test
-        run: cargo test --workspace --locked --target ${{ matrix.target }}
+        run: "cargo test --workspace --locked --target ${{ matrix.target }} -- --skip check::tests::"
 
       - name: Build release
         run: cargo build --release --locked -p commander --target ${{ matrix.target }}

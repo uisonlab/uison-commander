@@ -607,7 +607,7 @@ checksum = "0c9ea0ac24bc397ab3c98583a3c9ba74fa56b09a4449bbe172b9b1ddb016027a"
 
 [[package]]
 name = "commander"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "ops",
  "security-framework",
@@ -1733,7 +1733,7 @@ checksum = "7e036b411754132fd6b74e94b74e9a13c5cf606fa93d1885c35860d3060820b1"
 
 [[package]]
 name = "ops"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "vfs",
  "vfs-local",
@@ -2918,11 +2918,11 @@ checksum = "0b928f33d975fc6ad9f86c8f283853ad26bdd5b10b7f1542aa2fa15e2289105a"
 
 [[package]]
 name = "vfs"
-version = "0.1.1"
+version = "0.1.2"
 
 [[package]]
 name = "vfs-ftp"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "ops",
  "ring",
@@ -2933,14 +2933,14 @@ dependencies = [
 
 [[package]]
 name = "vfs-local"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "vfs",
 ]
 
 [[package]]
 name = "vfs-rt"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "tokio",
  "vfs",
@@ -2948,7 +2948,7 @@ dependencies = [
 
 [[package]]
 name = "vfs-s3"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "aws-sdk-s3",
  "aws-smithy-http-client",
@@ -2961,7 +2961,7 @@ dependencies = [
 
 [[package]]
 name = "vfs-sftp"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "ops",
  "russh",
@@ -2973,7 +2973,7 @@ dependencies = [
 
 [[package]]
 name = "vfs-webdav"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "bytes",
  "http-body 1.1.0",
